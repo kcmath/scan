@@ -1,0 +1,180 @@
+#include <iostream>
+#include <algorithm>
+#include <array>
+#include <vector>
+
+using namespace std;
+
+constexpr size_t kNumDimensions = 3;
+
+using Point3D = array<double, kNumDimensions>;
+using Point2D = array<double, 2>;
+
+// Compute the cross product of two 3D vectors
+inline Point3D cross_product(const Point3D& u, const Point3D& v) {
+    return { u[1]*v[2] - u[2]*v[1], u[2]*v[0] - u[0]*v[2], u[0]*v[1] - u[1]*v[0] };
+}
+
+// Compute the dot product of two 3D vectors
+inline double dot_product(const Point3D& u, const Point3D& v) {
+    return u[0]*v[0] + u[1]*v[1] + u[2]*v[2];
+}
+
+// Compute the 2D convex hull of a set of coplanar 3D points
+vector<Point3D> compute_2D_convex_hull(const vector<Point3D>& points) {
+    // Compute the normal vector of the plane that contains the points
+    Point3D normal = cross_product(points[1] - points[0], points[2] - points[0]);
+    
+    // Project the points onto a 2D plane that is perpendicular to the normal vector
+    vector<Point2D> projected_points;
+    projected_points.reserve(points.size());
+    Point3D v = { points[1][0] - points[0][0], points[1][1] - points[0][1], 0.0 };
+    double dot = dot_product(v, normal);
+    for (const auto& p : points) {
+        Point2D q = { p[0] - dot*normal[0], p[1] - dot*normal[1] };
+        projected_points.push_back(q);
+    }
+    
+    // Sort the projected points by polar angle with respect to the leftmost point
+    auto cmp = [](const Point2D& p, const Point2D& q) {
+        return (p[1] != q[1]) ? p[1] < q[1] : p[0] < q[0];
+    };
+    sort(projected_points.begin(), projected_points.end(), cmp);
+    
+    // Compute the 2D convex hull of the projected points using the Quickhull algorithm
+    vector<Point2D> hull;
+    hull.reserve(projected_points.size());
+    vector<size_t> stack;
+    stack.reserve(projected_points.size());
+    stack.push_back(0);
+    stack.push_back(projected_points.size() - 1);
+    while (!stack.empty()) {
+        size_t q1 = stack.back(); stack.pop_back();
+        size_t q2 = stack.back(); stack.pop_back();
+        double max_dist = 0.0;
+        size_t max_index = q1;
+        for (size_t i = 0; i < projected_points.size(); ++i) {
+            double dist = (projected_points[i][0] - projected_points[q1][0])*(projected_points[q2][1] - projected_points[q1][1]) -
+                          (projected_points[i][1] - projected_points[q1][1])*(projected_points[q2][0] - projected_points[q1][0]);
+            if (dist > max_dist) {
+                max_dist = dist;
+                max_index = i;
+            }
+        }    
+        if (max_dist > 0.0) {
+          stack.push_back(q1);
+          stack.push_back(max_index);
+          stack.push_back(max_index);
+          stack.push_back(q2);
+        } else {
+          hull.push_back(projected_points[q1]);
+        }
+    }
+    hull.push_back(projected_points.back());
+
+// Map the vertices of the 2D convex hull back to 3D space
+vector<Point3D> convex_hull;
+convex_hull.reserve(hull.size());
+Point3D v1 = { points[1][0] - points[0][0], points[1][1] - points[0][1], points[1][2] - points[0][2] };
+Point3D v2 = cross_product(v1, normal);
+for (const auto& p : hull) {
+    Point3D q = { p[0], p[1], 0.0 };
+    q[0] += v2[0];
+    q[1] += v2[1];
+    q[2] += v2[2];
+    convex_hull.push_back(q);
+}
+return convex_hull;
+}
+
+#include <iostream>
+#include <algorithm>
+#include <vector>
+
+using namespace std;
+
+struct Point3D {
+    double x, y, z;
+};
+
+struct Point2D {
+    double x, y;
+};
+
+// Compute the cross product of two 3D vectors
+Point3D cross_product(const Point3D& u, const Point3D& v) {
+    return { u.y*v.z - u.z*v.y, u.z*v.x - u.x*v.z, u.x*v.y - u.y*v.x };
+}
+
+// Compute the dot product of two 3D vectors
+double dot_product(const Point3D& u, const Point3D& v) {
+    return u.x*v.x + u.y*v.y + u.z*v.z;
+}
+
+// Compute the 2D convex hull of a set of coplanar 3D points
+vector<Point3D> compute_2D_convex_hull(const vector<Point3D>& points) {
+    // Compute the normal vector of the plane that contains the points
+    Point3D normal = cross_product(points[1] - points[0], points[2] - points[0]);
+    
+    // Project the points onto a 2D plane that is perpendicular to the normal vector
+    vector<Point2D> projected_points;
+    projected_points.reserve(points.size());
+    for (const auto& p : points) {
+        Point2D q = { p.x, p.y };
+        Point3D v = { q.x - points[0].x, q.y - points[0].y, 0.0 };
+        q.x -= dot_product(v, normal) * normal.x;
+        q.y -= dot_product(v, normal) * normal.y;
+        projected_points.push_back(q);
+    }
+    
+    // Sort the projected points by polar angle with respect to the leftmost point
+    auto cmp = [](const Point2D& p, const Point2D& q) {
+        return (p.y != q.y) ? p.y < q.y : p.x < q.x;
+    };
+    sort(projected_points.begin(), projected_points.end(), cmp);
+    
+    // Compute the 2D convex hull of the projected points using the Graham scan algorithm
+    vector<Point2D> hull;
+    hull.reserve(projected_points.size());
+    for (const auto& p : projected_points) {
+        while (hull.size() >= 2) {
+            Point2D q1 = hull.back(); hull.pop_back();
+            Point2D q2 = hull.back();
+            Point2D v1 = { q2.x - q1.x, q2.y - q1.y };
+            Point2D v2 = { p.x - q2.x, p.y - q2.y };
+            if (v1.x * v2.y - v1.y * v2.x > 0.0) {
+                hull.push_back(q1);
+                break;
+            }
+        }
+        hull.push_back(p);
+    }
+    
+    // Map the vertices of the 2D convex hull back to 3D space
+    vector<Point3D> convex_hull;
+    convex_hull.reserve(hull.size());
+    for (const auto& p : hull) {
+        Point3D q = { p.x, p.y, 0.0 };
+        Point3D v = cross_product(points[1] - points[0], normal);
+        q.x += v.x;
+        q.y += v.y;
+        q.z += v.z;
+        convex_hull.push_back(q);
+    }
+    return convex_hull;
+}
+
+int main() {
+// Define a set of coplanar 3D points
+vector<Point3D> points = { {0.0, 0.0, 0.0}, {1.0, 0.0, 0.0}, {1.0, 1.0, 0.0}, {0.0, 1.0, 0.0}, {0.5, 0.5, 0.0} };
+// Compute the 2D convex hull of the points
+vector<Point3D> convex_hull = compute_2D_convex_hull(points);
+
+// Print the vertices of the convex hull
+cout << "Convex hull vertices:" << endl;
+for (const auto& p : convex_hull) {
+    cout << "(" << p.x << ", " << p.y << ", " << p.z << ")" << endl;
+}
+
+return 0;
+}
